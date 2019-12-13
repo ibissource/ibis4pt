@@ -1,0 +1,31 @@
+<module>
+	<adapter name="TestXSLTPipe" description="To test xslt pipe">
+    	
+      	<receiver name="TestXSLTPipe" className="nl.nn.adapterframework.receivers.GenericReceiver">
+			<listener name="TestXSLTPipe" className="nl.nn.adapterframework.receivers.JavaListener" serviceName="TestXSLTPipe" />
+		</receiver>
+      	
+
+		<pipeline firstPipe="XsltPipe">
+			<exits>
+				<exit path="READY" state="success" />
+				<exit path="EXIT" state="success"/>
+			</exits>
+			<pipe name="XsltPipe" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/OutputFilename.xsl"
+				getInputFromFixedValue="&lt;Dummy/&gt;">
+				<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
+				<param name="Type" xpathExpression="//row/field[@name='RECORDTYPE']" sessionKey="originalMessage" />
+				<param name="fileType" value="temp" />
+				<param name="hostName" value="srtzzapp0101"/>
+				<forward name="success" path="Echo"/>
+			</pipe>
+			<pipe name="Echo" 
+				className="nl.nn.adapterframework.pipes.EchoPipe"
+			>
+				<forward name="success" path="EXIT"/>
+			</pipe>
+		</pipeline>
+	</adapter>
+</module>

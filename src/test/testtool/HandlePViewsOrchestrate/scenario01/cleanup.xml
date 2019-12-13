@@ -1,0 +1,7 @@
+<manageDatabaseREQ>
+    <sql>
+        <type>other</type>
+        <query>delete from recordstore</query>
+       </sql>
+</manageDatabaseREQ>
+        

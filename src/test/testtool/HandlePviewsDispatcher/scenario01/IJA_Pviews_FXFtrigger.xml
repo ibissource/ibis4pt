@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+	<SOAP-ENV:Body>
+		<ns0:OnCompletedTransferNotify_Action xmlns:ns0="http://nn.nl/XSD/Infrastructure/Transfer/FileTransfer/1/OnCompletedTransferNotify/1">
+			<ns0:TransferFlowId>NNT02672</ns0:TransferFlowId>
+			<ns0:UserData>NNT02672-LC_PDDS</ns0:UserData>
+			<ns0:ClientFilename>/interfaces/ICM04_OUT_SOLIFE/send/test.csv</ns0:ClientFilename>
+			<ns0:ServerFilename>/opt/data/FXF/LC_PDDS/NNX02672/in/test.csv</ns0:ServerFilename>
+			<ns0:LocalTransactionID>I621900006</ns0:LocalTransactionID>
+		</ns0:OnCompletedTransferNotify_Action>
+	</SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

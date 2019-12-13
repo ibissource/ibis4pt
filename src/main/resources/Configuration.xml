@@ -1,0 +1,18 @@
+<!DOCTYPE configuration [
+	<!ENTITY TestXslt SYSTEM "Configuration_TestXSLTPipe.xml">
+    <!ENTITY CleanRecords SYSTEM "./Configuration_CleanRecords.xml">
+	<!ENTITY HandlePViewsDispatcher SYSTEM "./Configuration_HandlePViewsDispatcher.xml">
+    <!ENTITY HandlePViewsOrchestrate SYSTEM "./Configuration_HandlePViewsOrchestrate.xml">
+	<!ENTITY MergeAndTransferFile SYSTEM "./Configuration_MergeAndTransferFile.xml">
+]>
+<configuration name="Ibis4PT">
+	<jmsRealms>
+		<jmsRealm realmName="jdbc" datasourceName="jdbc/${instance.name.lc}"/>
+		<!-- jmsRealm realmName="qcf" queueConnectionFactoryName="jms/qcf"/ -->
+	</jmsRealms>
+	&TestXslt;
+    &CleanRecords;
+	&HandlePViewsDispatcher;
+    &HandlePViewsOrchestrate;
+	&MergeAndTransferFile;
+</configuration>

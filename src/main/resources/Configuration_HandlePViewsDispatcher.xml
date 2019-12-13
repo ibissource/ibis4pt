@@ -1,0 +1,143 @@
+<module>
+
+	<adapter name="HandlePviewsDispatcher" description="HandlePviewsDispatcher">
+
+		<receiver name="HandlePviewsDispatcher"
+				className="nl.nn.adapterframework.receivers.GenericReceiver"
+				transactionAttribute="Required"
+				transactionTimeout="${FXF_TransactionTimeout}"
+				maxRetries="${FXF_maxRetries}">
+			<listener className="nl.nn.adapterframework.extensions.esb.EsbJmsListener"
+				destinationName="P2P.General.LC_PDDS.FileTransfer.Action" 
+				lookupDestination="false"
+               	jmsRealm="qcf_tibco_p2p_ff"
+				messageProtocol="FF" />
+			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				jmsRealm="jdbc" 
+				slotId="${FXF_Application}/HandlePviewsDispatcher" />
+			<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				jmsRealm="jdbc" 
+				slotId="${FXF_Application}/HandlePviewsDispatcher/Archive" />
+		</receiver>
+
+		<pipeline firstPipe="Store full File path and name" transactionAttribute="Required">
+
+			<exits>
+				<exit path="READY" state="success" />
+			</exits>
+
+			<inputValidator
+				className="nl.nn.adapterframework.extensions.fxf.FxfXmlValidator"
+				direction="receive" />
+
+			<inputWrapper className="nl.nn.adapterframework.extensions.fxf.FxfWrapperPipe"
+				direction="unwrap" />
+
+			<pipe name="Store full File path and name" 
+				className="nl.nn.adapterframework.pipes.PutInSession"
+				sessionKey="filePathName">
+				<forward name="success" path="Read input CSV file" />
+			</pipe>
+			
+			<pipe 
+				name="Read input CSV file"
+				className="nl.nn.adapterframework.pipes.FilePipe"
+				actions="read"
+				outputType="stream">				  			  			
+				<forward name="success" path="Process each Line" />
+			</pipe>
+			
+			<pipe name="Process each Line"
+				className="nl.nn.adapterframework.pipes.StreamLineIteratorPipe"
+				ignoreExceptions="true"
+				collectResults="false">
+				<sender className="nl.nn.adapterframework.senders.IbisLocalSender"
+					javaListener="HandlePviewsStore">
+				</sender>
+				<param name="TransactionId" sessionKey="TransactionId" />
+				<param name="filePathName" sessionKey="filePathName" />
+				<param name="flowId" sessionKey="flowId" />
+				<forward name="success" path="READY" />
+			</pipe>
+		</pipeline>
+	</adapter>
+	
+	<adapter name="HandlePviewsStore" description="Opens batchfile and maps the records into Database">
+		<receiver name="HandlePviewsStore"
+			className="nl.nn.adapterframework.receivers.GenericReceiver">
+			<listener name="HandlePviewsStore"
+				className="nl.nn.adapterframework.receivers.JavaListener" />
+			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				jmsRealm="jdbc" 
+				slotId="${ApplicationId}/HandlePviewsStore" />
+		</receiver>
+		
+		<pipeline firstPipe="check for empty line" transactionAttribute="Required">
+			<exits>
+				<exit path="READY" state="success" />
+				<exit path="EXIT" state="success"/>
+			</exits>
+			<global-forwards>
+				<forward name="exception" path="force To Exception" />
+			</global-forwards>
+			
+			<pipe name="check for empty line" 
+				className="nl.nn.adapterframework.pipes.XmlSwitch"
+				serviceSelectionStylesheetFilename="xsl/CheckEmptyLine.xsl"
+				getInputFromFixedValue="&lt;Dummy/&gt;"
+				xslt2="true">
+				<param name="FileLine" sessionKey="originalMessage" />
+				<forward name="READY" path="READY" />
+				<forward name="process" path="extract file name" />
+			</pipe>
+
+			<pipe name="extract file name" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/ClientFilename.xsl"
+				getInputFromFixedValue="&lt;Dummy/&gt;"
+			    storeResultInSessionKey="FileName"
+				xslt2="true">
+			    <param name="clientFilename" sessionKey="filePathName"/>
+			    
+				<forward name="success" path="process line"/>
+			</pipe>
+			
+			<pipe name="process line" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/ProcessLine.xsl"
+				getInputFromFixedValue="&lt;Dummy/&gt;"
+			    storeResultInSessionKey="PolNr"
+				xslt2="true">
+			    <param name="mode" value="PolNr"/>
+			    <param name="originalMessage" sessionKey="originalMessage"/>
+			    
+				<forward name="success" path="Insert into database"/>
+			</pipe>
+			
+			<pipe name="Insert into database"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				<sender 
+					className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					query="INSERT INTO RECORDSTORE (RECORDID, TYPE, RECORDTYPE, CRE_TYDST, INPUTFILEREF, POLICYNO, REQUEST, STATUS) 
+							VALUES(SEQ_RECORDSTORE.NEXTVAL,'VTA-049','renewal',SYSTIMESTAMP,?,?,?,0)"
+					queryType="insert"
+					jmsRealm="jdbc">
+					
+					<!-- <param name="flowId" sessionKey="flowId" /> -->
+					<param name="InputFileRef" sessionKey="FileName"/>
+					<param name="PolicyNo" sessionKey="PolNr"/>
+					<param name="Request" sessionKey="originalMessage"/>
+				</sender>
+				<forward name="success" path="READY"/>
+			</pipe>
+
+			<pipe name="force To Exception" 
+				className="nl.nn.adapterframework.pipes.ExceptionPipe"
+				throwException="false">
+				<forward name="success" path="EXIT" />
+			</pipe>
+
+		</pipeline>
+	</adapter>
+
+</module>

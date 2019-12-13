@@ -1,0 +1,45 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Header>
+    <MessageHeader xmlns="http://nn.nl/XSD/Generic/MessageHeader/1">
+      <From>
+        <Id>Ibis4PT</Id>
+      </From>
+      <To>
+        <Location>ESB.LifeRetailCB.BS.Policy.LifeRetailCBPolicy.3.GetPolicyDetailsLifeInsurance.1.Request</Location>
+      </To>
+      <HeaderFields>
+        <CPAId>n/a</CPAId>
+        <ConversationId>MYHOST000012345_0a1b234c--56de7fa8_9012345678b_-9cd0</ConversationId>
+        <MessageId>MYHOST000012345_0a1b234c--56de7fa8_9012345678b_-9cd0</MessageId>
+        <Timestamp>2001-12-17T09:30:47</Timestamp>
+      </HeaderFields>
+      <Service>
+        <Name>Policy</Name>
+        <Context>LifeRetailCBPolicy</Context>
+        <Action>
+          <Paradigm>Request</Paradigm>
+          <Name>GetPolicyDetailsLifeInsurance</Name>
+          <Version>1</Version>
+        </Action>
+      </Service>
+    </MessageHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <pfx:GetPolicyDetailsLifeInsuranceRequest xmlns:ns5="http://www.bsb.com/is/xml/aggregation/model/traditionallife/policy/detail" xmlns:pfx="http://nn.nl/XSD/LifeRetailCB/Policy/LifeRetailCBPolicy/3/GetPolicyDetailsLifeInsurance/1">
+      <pfx:Services>
+        <pfx:getPolicyClauses>0</pfx:getPolicyClauses>
+      </pfx:Services>
+      <pfx:policyNumber>LV01234567</pfx:policyNumber>
+      <pfx:detailFilter>
+        <ns5:detailTypeList>
+          <ns5:detailType>CLAUSES</ns5:detailType>
+          <ns5:detailType>GENERAL_INFORMATION</ns5:detailType>
+          <ns5:detailType>OPERATIONS</ns5:detailType>
+          <ns5:detailType>BILLING</ns5:detailType>
+          <ns5:detailType>COVERAGE</ns5:detailType>
+          <ns5:detailType>COVERAGE_PRICING</ns5:detailType>
+        </ns5:detailTypeList>
+      </pfx:detailFilter>
+    </pfx:GetPolicyDetailsLifeInsuranceRequest>
+  </soapenv:Body>
+</soapenv:Envelope>

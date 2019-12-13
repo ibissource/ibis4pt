@@ -1,0 +1,351 @@
+<module>
+	
+	<adapter name="MergeAndTransferFile"
+			description="This adapter itertes over files created by different nodes and triggers child adapter to create final merged file.">
+	
+		<receiver name="MergeAndTransferFile JdbcQueryListener"
+                  className="nl.nn.adapterframework.receivers.GenericReceiver"
+                  transactionAttribute="Required"
+                  pollInterval="60"
+                  active="true"
+                  transactionTimeout="14400">
+            <listener name="JdbcQueryListener for MergeAndTransferFile"
+                   className="nl.nn.adapterframework.jdbc.JdbcQueryListener"
+                   jmsRealm="jdbc"
+                   selectQuery="SELECT RECORDID AS KEY FROM RECORDSTORE WHERE PRC_TYDST IS NOT NULL AND FILE_PRC_TYDST IS NULL AND ROWNUM=1 AND STATUS='2'" 
+                   updateStatusToProcessedQuery="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP WHERE RECORDID=?"
+                   keyField="key"/>
+            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}"/>
+            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}" />                       
+        </receiver>
+		
+		<pipeline firstPipe="Get count of unprocessed records" transactionAttribute="Required">
+		
+				<exits>
+					<exit path="READY" state="success" />
+					<exit path="EXIT" state="success"/>
+				</exits>
+				
+				<pipe name="Get count of unprocessed records"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					transactionAttribute="RequiresNew">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="select" 
+						jmsRealm="jdbc"
+						query="SELECT COUNT(1) AS COUNT FROM RECORDSTORE WHERE STATUS='0'">
+					</sender>
+					<forward name="success" path="Check if Orchestration is complete" />
+				</pipe>
+				
+				<pipe name="Check if Orchestration is complete"
+					className="nl.nn.adapterframework.pipes.XmlIf"
+					xpathExpression="(//row/field[@name='COUNT']) > 0">
+					<forward name="then" path="EXIT" />
+					<forward name="else" path="Determine output filename for monthly" />
+				</pipe>
+				
+				<pipe name="Determine output filename for monthly" 
+					className="nl.nn.adapterframework.pipes.XsltPipe"
+					styleSheetName="xsl/OutputFilename.xsl"
+					getInputFromFixedValue="&lt;Dummy/&gt;"
+					storeResultInSessionKey="outputFileName_monthly"
+					xslt2="true">
+					<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
+					<param name="Type" value="renewal" />
+					<param name="fileType" value="final" />
+					<param name="hostName" pattern="{hostname}"/>
+					<forward name="success" path="Determine output filename for daily"/>
+				</pipe>	
+				
+				<pipe name="Determine output filename for daily" 
+					className="nl.nn.adapterframework.pipes.XsltPipe"
+					styleSheetName="xsl/OutputFilename.xsl"
+					getInputFromFixedValue="&lt;Dummy/&gt;"
+					storeResultInSessionKey="outputFileName_daily"
+					xslt2="true">
+					<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
+					<param name="Type" value="mutation" />
+					<param name="fileType" value="final" />
+					<param name="hostName" pattern="{hostname}"/>
+					<forward name="success" path="Update file processed date for selected record"/>
+				</pipe>	
+				
+				<pipe name="Update file processed date for selected record"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					storeResultInSessionKey="selectedRecordType">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="select" 
+						jmsRealm="jdbc"
+						query="SELECT RECORDTYPE FROM RECORDSTORE WHERE RECORDID = ?">
+						<param name="RECORDID" sessionKey="originalMessage"/>
+					</sender>
+					<forward name="success" path="Determine selected record type monthly or daily" />
+				</pipe>
+				
+				<pipe name ="Determine selected record type monthly or daily"
+					className="nl.nn.adapterframework.pipes.XmlSwitch"
+					serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
+					getInputFromFixedValue="&lt;Dummy/&gt;"
+					xslt2="true">
+					<param name="recordTypeForFile" xpathExpression="(//row/field[@name='RECORDTYPE'])" sessionKey="selectedRecordType"/>
+	                <forward name="monthly" path="Update record with monthly file name"/>
+	                <forward name="daily" path="Update record with daily file name"/> 
+				</pipe>
+				
+				<pipe name="Update record with monthly file name"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="update" 
+						jmsRealm="jdbc"
+						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE RECORDID = ?">
+						<param name="OUTPUTFILEREF" sessionKey="outputFileName_monthly"/>
+						<param name="RECORDID" sessionKey="originalMessage"/>
+					</sender>
+					<forward name="success" path="Get info about monthly files" />
+				</pipe>
+				
+				<pipe name="Update record with daily file name"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="update" 
+						jmsRealm="jdbc"
+						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE RECORDID = ?">
+						<param name="OUTPUTFILEREF" sessionKey="outputFileName_daily"/>
+						<param name="RECORDID" sessionKey="originalMessage"/>
+					</sender>
+					<forward name="success" path="Get info about monthly files" />
+				</pipe>
+				
+				<pipe 
+					name="Get info about monthly files"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="list"
+					directory="${fxf.dir}/${OutputDirMonthly}/out"
+					fileName="Monthly*"
+					storeResultInSessionKey="monthlyFilesInfo"> 			  			
+					<forward name="success" path="Check if monthly files exist" />
+				</pipe>
+				
+				<pipe name="Check if monthly files exist"
+					className="nl.nn.adapterframework.pipes.XmlIf"
+					xpathExpression="(//directory/@count) > 0">
+					<forward name="then" path="Merge monthly files" />
+					<forward name="else" path="Get info about daily files" />
+				</pipe>
+				
+				<pipe name="Merge monthly files"
+					className="nl.nn.adapterframework.pipes.ForEachChildElementPipe"
+					elementXPathExpression="//file"
+					getInputFromSessionKey="monthlyFilesInfo"
+					collectResults="false">
+					<sender 
+						className="nl.nn.adapterframework.senders.IbisLocalSender"
+						javaListener="MergeAndTransferFile_Child">	
+						<param name="outputFileNameParam" sessionKey="outputFileName_monthly"/>
+						<param name="outputDirParam" value="${OutputDirMonthly}" />	
+						<param name="recordTypeParam" value="monthly" /> 					
+					</sender>
+					<forward name="success" path="Update file processed date for monthly records" />
+				</pipe>
+				
+				<pipe name="Update file processed date for monthly records"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					transactionAttribute="RequiresNew">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="update" 
+						jmsRealm="jdbc"
+						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE STATUS='2' AND RECORDTYPE='renewal' AND RECORDID != ?">
+						<param name="OUTPUTFILEREF" sessionKey="outputFileName_monthly"/>
+						<param name="RECORDID" sessionKey="originalMessage"/>
+					</sender>
+					<forward name="success" path="Create complete file path for monthly transfer" />
+				</pipe>
+				
+				<pipe name ="Create complete file path for monthly transfer"
+					className="nl.nn.adapterframework.pipes.XsltPipe"
+					styleSheetName="xsl/CompleteFilePath.xsl"
+					storeResultInSessionKey="completeFilePath"
+					xslt2="true">
+					<param name="outputFileName" sessionKey="outputFileName_monthly"/>
+					<param name="fxfDir" value="${fxf.dir}" />
+					<param name="outputDir" value="${OutputDirMonthly}" />
+					<param name="transferRecordType" value="monthly" /> 
+					<forward name="success" path="Start FXF transfer Monthly"/>
+				</pipe>
+				
+				<pipe name="Start FXF transfer Monthly"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					<inputWrapper className="nl.nn.adapterframework.extensions.fxf.FxfWrapperPipe"
+						flowId="${OutputDirMonthly}" />
+					<inputValidator
+						className="nl.nn.adapterframework.extensions.fxf.FxfXmlValidator"
+						throwException="true" />
+					<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
+						destinationName="ESB.Infrastructure.US.Transfer.Filetransfer.1.StartTransfer.1.Action" 
+						lookupDestination="false"
+	               		jmsRealm="qcf_tibco_esb_ff"
+						messageProtocol="FF" />
+					<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+						jmsRealm="jdbc" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
+					<forward name="success" path="Get info about daily files" />
+				</pipe>
+				
+				<pipe 
+					name="Get info about daily files"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="list"
+					directory="${fxf.dir}/${OutputDirDaily}/out"
+					fileName="Daily*"
+					storeResultInSessionKey="dailyFilesInfo"> 			  			
+					<forward name="success" path="Check if daily files exist" />
+				</pipe>
+				
+				<pipe name="Check if daily files exist"
+					className="nl.nn.adapterframework.pipes.XmlIf"
+					xpathExpression="(//directory/@count) > 0">
+					<forward name="then" path="Merge daily files" />
+					<forward name="else" path="READY" />
+				</pipe>
+				
+				<pipe name="Merge daily files"
+					className="nl.nn.adapterframework.pipes.ForEachChildElementPipe"
+					elementXPathExpression="//file"
+					getInputFromSessionKey="dailyFilesInfo"
+					collectResults="false">
+					<sender 
+						className="nl.nn.adapterframework.senders.IbisLocalSender"
+						javaListener="MergeAndTransferFile_Child">	
+						<param name="outputFileNameParam" sessionKey="outputFileName_daily"/>
+						<param name="outputDirParam" value="${OutputDirDaily}" />	
+						<param name="recordTypeParam" value="daily" /> 				
+					</sender>
+					<forward name="success" path="Update file processed date for daily records" />
+				</pipe>
+				
+				<pipe name="Update file processed date for daily records"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					transactionAttribute="RequiresNew">
+					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+						queryType="update" 
+						jmsRealm="jdbc"
+						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE STATUS='2' AND RECORDTYPE ='mutation' AND RECORDID != ?">
+						<param name="OUTPUTFILEREF" sessionKey="outputFileName_daily"/>
+						<param name="RECORDID" sessionKey="originalMessage"/>
+					</sender>
+					<forward name="success" path="Create complete file path for daily transfer" />
+				</pipe>				
+
+				<pipe name ="Create complete file path for daily transfer"
+					className="nl.nn.adapterframework.pipes.XsltPipe"
+					styleSheetName="xsl/CompleteFilePath.xsl"
+					storeResultInSessionKey="completeFilePath"
+					xslt2="true">
+					<param name="outputFileName" sessionKey="outputFileName_daily"/>
+					<param name="fxfDir" value="${fxf.dir}" />
+					<param name="outputDir" value="${OutputDirDaily}" />
+					<param name="transferRecordType" value="daily" /> 
+					<forward name="success" path="Start FXF transfer Daily"/>
+				</pipe>
+		     
+			    <pipe name="Start FXF transfer Daily"
+					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					<inputWrapper className="nl.nn.adapterframework.extensions.fxf.FxfWrapperPipe"
+						flowId="${OutputDirDaily}" />
+					<inputValidator
+						className="nl.nn.adapterframework.extensions.fxf.FxfXmlValidator"
+						throwException="true" />
+					<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
+						destinationName="ESB.Infrastructure.US.Transfer.Filetransfer.1.StartTransfer.1.Action" 
+						lookupDestination="false"
+	               		jmsRealm="qcf_tibco_esb_ff"
+						messageProtocol="FF" />
+					<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+						jmsRealm="jdbc" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
+					<forward name="success" path="READY" />
+				</pipe>
+				
+		</pipeline>
+	
+	</adapter>
+	
+	<adapter name="MergeAndTransferFile_Child"
+            description="This adapter creates final file.">
+            
+            <receiver name="MergeAndTransferFile_Child"
+                className="nl.nn.adapterframework.receivers.GenericReceiver">
+			      <listener name="MergeAndTransferFile_Child"
+                   className="nl.nn.adapterframework.receivers.JavaListener"/>
+		    </receiver>
+		    
+		    <pipeline firstPipe="Store full File path and name" transactionAttribute="Required">
+		    
+		    	<exits>
+					<exit path="EXIT" state="success"/>
+				</exits>
+
+				<pipe name ="Store full File path and name"
+					className="nl.nn.adapterframework.pipes.XsltPipe"
+					styleSheetName="xsl/CompleteFilePath.xsl"
+					storeResultInSessionKey="intFilePathName"
+					xslt2="true">
+					<param name="outputFileName" xpathExpression="normalize-space(file/@name)"/>
+					<param name="fxfDir" value="${fxf.dir}" />
+					<param name="outputDir" sessionKey="outputDirParam" />
+					<param name="transferRecordType" sessionKey="recordTypeParam" /> 
+					<forward name="success" path="Read the intermediate file"/>
+				</pipe>
+				
+		    	<pipe 
+					name="Read the intermediate file"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="read"
+					outputType="stream"
+					storeResultInSessionKey="intFileStream"> 			  			
+					<forward name="success" path="Determine file type monthly or daily" />
+				</pipe>
+				
+				<pipe name ="Determine file type monthly or daily"
+					className="nl.nn.adapterframework.pipes.XmlSwitch"
+					serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
+					getInputFromFixedValue="&lt;Dummy/&gt;"
+				xslt2="true">
+					<param name="recordTypeForFile" sessionKey="recordTypeParam"/>
+	                <forward name="monthly" path="Write to final monthly file"/>
+	                <forward name="daily" path="Write to final daily file"/> 
+				</pipe>
+				
+				<pipe 
+					name="Write to final monthly file"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="write_append"
+					directory="${fxf.dir}/${OutputDirMonthly}/out"
+					fileNameSessionKey="outputFileNameParam"
+					getInputFromSessionKey="intFileStream"> 			  			
+					<forward name="success" path="Delete the intermediate file" />
+				</pipe>
+				
+				<pipe 
+					name="Write to final daily file"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="write_append"
+					directory="${fxf.dir}/${OutputDirDaily}/out"
+					fileNameSessionKey="outputFileNameParam"
+					getInputFromSessionKey="intFileStream"> 			  			
+					<forward name="success" path="Delete the intermediate file" />
+				</pipe>
+				
+				<pipe 
+					name="Delete the intermediate file"
+					className="nl.nn.adapterframework.pipes.FilePipe"
+					actions="delete"
+					fileNameSessionKey="intFilePathName"> 			  			
+					<forward name="success" path="EXIT" />
+				</pipe>
+				
+		    </pipeline>
+            
+    </adapter>
+		
+</module>
+
+

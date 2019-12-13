@@ -1,0 +1,338 @@
+<module>
+	<adapter name="HandlePViewsOrchestrate" description="Process each P-views record stored in DB:Recordstore">
+    	
+      	<receiver name="HandlePViewsOrchestrate JdbcQueryListener"
+                  className="nl.nn.adapterframework.receivers.GenericReceiver"
+                  numThreads="${maxThreads}"
+                  transactionAttribute="Required"
+                  pollInterval="60"
+                  active="true"
+                  transactionTimeout="14400">
+            <listener name="JdbcQueryListener for HandlePViewsOrchestrate"
+                   className="nl.nn.adapterframework.jdbc.JdbcQueryListener"
+                   jmsRealm="jdbc"
+                   selectQuery="SELECT RECORDID AS KEY FROM RECORDSTORE WHERE STATUS=0 AND RECORDTYPE = 'renewal' AND PRC_TYDST IS NULL" 
+				   updateStatusToProcessedQuery="UPDATE RECORDSTORE SET STATUS = STATUS WHERE RECORDID=?"  
+                   keyField="key"/>
+            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}"/>
+            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}" />                       
+        </receiver>
+      	
+ <!-- updateStatusToErrorQuery="UPDATE RECORDSTORE SET STATUS = 9 WHERE RECORDID=?" 
+
+	  updateStatusToProcessedQuery="UPDATE RECORDSTORE SET STATUS = STATUS WHERE RECORDID=?"
+			
+-->
+	
+ <pipeline firstPipe="Retrieve record from database" transactionAttribute="Required">
+
+			<exits>
+				<exit path="READY" state="success" />
+				<exit path="EXIT" state="success"/>
+			</exits>
+			
+			<pipe name="Retrieve record from database"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				storeResultInSessionKey="originalMessage">
+				<sender 
+					className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					query="SELECT RECORDID,POLICYNO,RECORDTYPE,REQUEST FROM RECORDSTORE WHERE RECORDID=?"
+					queryType="select"
+					jmsRealm="jdbc">
+					<param name="RECORDID" sessionKey="originalMessage"/>
+				</sender>
+				<forward name="success" path="Extract record information from result"/>
+			</pipe>
+			
+			<pipe name="Extract record information from result" className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/ExtractRecord.xsl"
+				storeResultInSessionKey="extractedRecord"
+				xslt2="true">
+				<param name="record" sessionKey="originalMessage" type="domdoc" />
+				<forward name="success" path="Determine intermediate filename" />
+			</pipe>
+			
+			<pipe name="Determine intermediate filename" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/OutputFilename.xsl"
+				getInputFromFixedValue="&lt;Dummy/&gt;"
+				storeResultInSessionKey="outputFileName"
+				xslt2="true">
+				<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
+				<param name="Type" xpathExpression="//row/field[@name='RECORDTYPE']" sessionKey="extractedRecord" />
+				<param name="fileType" value="temp" />
+				<param name="hostName" pattern="{hostname}"/>
+				<forward name="success" path="Process extracted record"/>
+			</pipe>
+			
+			<pipe name="Process extracted record"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				getInputFromSessionKey="extractedRecord">
+				<sender className="nl.nn.adapterframework.senders.IbisLocalSender"
+					javaListener="HandlePViewsGetData">
+					<param name="outputFileName" sessionKey="outputFileName"/>
+					<param name="recordTypeParam" xpathExpression="//row/field[@name='RECORDTYPE']" sessionKey="extractedRecord"/>
+				</sender>
+				<forward name="success" path="READY"/>
+			</pipe>
+			
+		</pipeline>
+	</adapter>
+
+	<adapter name="HandlePViewsGetData">
+		<receiver name="HandlePViewsGetData"
+			className="nl.nn.adapterframework.receivers.GenericReceiver">
+			<listener name="HandlePViewsGetData"
+				className="nl.nn.adapterframework.receivers.JavaListener" />
+			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsGetData" />
+		</receiver>
+
+		<pipeline firstPipe="Create SapICM request" transactionAttribute="Required">
+
+			<exits>
+				<exit path="READY" state="success" />
+				<exit path="EXIT" state="success"/>
+			</exits>
+			<global-forwards>
+				<forward name="exception" path="force To Exception" />
+				<forward name="error" path="force To Exception" />
+			</global-forwards>
+			
+			<pipe name="Create SapICM request" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/SapICM_Request.xsl"
+				storeResultInSessionKey="SapICM_Request"
+				xslt2="true">
+				<param name="str" xpathExpression="row/field[@name='REQUEST']" sessionKey="originalMessage" />
+				<forward name="success" path="Create GetPartiesOnAgreement request" />
+			</pipe>
+
+			<pipe name="Create GetPartiesOnAgreement request" 
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/GetPartiesOnAgreement_Request.xsl"
+				xslt2="true">
+				<param name="timestamp" pattern="{now,date,yyyy-MM-dd}" />
+				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
+				<forward name="success" path="Call GetPartiesOnAgreement" />
+			</pipe>
+
+			<pipe name="Call GetPartiesOnAgreement"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				storeResultInSessionKey="GPOA_Response" 
+				transactionAttribute="NotSupported">
+				<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
+					destinationName="ESB.CustomerAdministration.BS.Party.1.GetPartiesOnAgreement.6.Request" 
+					lookupDestination="false"
+               		jmsRealm="qcf_tibco_esb_rr" messageProtocol="RR">
+				</sender>
+
+				<inputValidator className="nl.nn.adapterframework.pipes.WsdlXmlValidator"
+					wsdl="wsdl/GetPartiesOnAgreement_6_2.wsdl" 
+					soapBody="GetPartiesOnAgreement_Request"
+					soapHeader="MessageHeader">
+					<forward name="failure" path="Update record for xsd invalid" />
+					<forward name="parserError" path="Update record for xsd invalid" />
+				</inputValidator>
+
+				<outputValidator className="nl.nn.adapterframework.pipes.WsdlXmlValidator"
+					wsdl="wsdl/GetPartiesOnAgreement_6_2.wsdl" 
+					soapBody="GetPartiesOnAgreement_Response"
+					soapHeader="MessageHeader">
+					<forward name="failure" path="Update record for xsd invalid" />
+					<forward name="parserError" path="Update record for xsd invalid" />
+				</outputValidator>
+
+				<inputWrapper
+					className="nl.nn.adapterframework.extensions.esb.EsbSoapWrapperPipe"
+					cmhVersion="2">
+					<param name="destination" value="${destination.GetPartiesOnAgreement}" />
+				</inputWrapper>
+
+				<outputWrapper
+					className="nl.nn.adapterframework.extensions.esb.EsbSoapWrapperPipe"
+					direction="unwrap" cmhVersion="2" removeOutputNamespaces="true">
+				</outputWrapper>
+
+				<forward name="success" path="Check GPOA response" />
+				<forward name="timeout" path="Update record for ERROR timeout" />
+			</pipe>			
+
+			<pipe name="Check GPOA response"
+				className="nl.nn.adapterframework.pipes.XmlIf"
+				xpathExpression="//Status = 'ERROR'">
+				<forward name="then" path="Update record for ERROR response" />
+				<forward name="else" path="Create GetPolicyDetailsLifeInsurance request" />
+			</pipe>
+
+			<pipe name="Create GetPolicyDetailsLifeInsurance request"
+				className="nl.nn.adapterframework.pipes.XsltPipe" 
+				styleSheetName="xsl/GPDLI_Request.xsl"
+				xslt2="true">
+				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
+				<forward name="success" path="Call GetPolicyDetailsLifeInsurance" />
+			</pipe>
+			
+			<pipe name="Call GetPolicyDetailsLifeInsurance"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				storeResultInSessionKey="GPDLI_Response" 
+				transactionAttribute="NotSupported">
+				<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
+					destinationName="ESB.LifeRetailCB.BS.Policy.LifeRetailCBPolicy.3.GetPolicyDetailsLifeInsurance.1.Request"
+					lookupDestination="false"
+               		jmsRealm="qcf_tibco_esb_rr"
+					messageProtocol="RR">
+				</sender>
+
+				<inputValidator className="nl.nn.adapterframework.pipes.WsdlXmlValidator"
+					wsdl="wsdl/GetPolicyDetailsLifeInsurance_v6.wsdl"
+					soapBody="GetPolicyDetailsLifeInsuranceRequest" 
+					soapHeader="MessageHeader">
+					<forward name="failure" path="Update record for xsd invalid" />
+					<forward name="parserError" path="Update record for xsd invalid" />
+				</inputValidator>
+
+				<outputValidator className="nl.nn.adapterframework.pipes.WsdlXmlValidator"
+					wsdl="wsdl/GetPolicyDetailsLifeInsurance_v6.wsdl" 
+					soapBody="GetPolicyDetailsLifeInsuranceResponse"
+					soapHeader="MessageHeader">
+					<forward name="failure" path="Update record for xsd invalid" />
+					<forward name="parserError" path="Update record for xsd invalid" />
+				</outputValidator>
+
+				<inputWrapper
+					className="nl.nn.adapterframework.extensions.esb.EsbSoapWrapperPipe">
+					<param name="destination" value="${destination.GetPolicyDetailsLifeInsurance}" />
+				</inputWrapper>
+
+				<outputWrapper
+					className="nl.nn.adapterframework.extensions.esb.EsbSoapWrapperPipe"
+					direction="unwrap" removeOutputNamespaces="true">
+				</outputWrapper>
+
+				<forward name="success" path="Check GPDLI response" />
+				<forward name="timeout" path="Update record for ERROR timeout" />
+			</pipe>
+
+			<pipe name="Check GPDLI response"
+				className="nl.nn.adapterframework.pipes.XmlIf"
+				xpathExpression="//Status = 'ERROR'">
+				<forward name="then" path="Update record for ERROR response" />
+				<forward name="else" path="Create P-view file content" />
+			</pipe>
+			
+			<pipe name="Create P-view file content"
+				className="nl.nn.adapterframework.pipes.XsltPipe" 
+				styleSheetName="xsl/HandlePViewsLI.xsl"
+				xslt2="true">
+				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
+				<param name="timestamp" pattern="{now,date,yyyyMMddHHmmssSSSSSS}" />
+				<param name="GPDLI_Response" sessionKey="GPDLI_Response" type="domdoc"/>
+				<param name="GPOA_Response" sessionKey="GPOA_Response" type="domdoc"/>
+				<param name="SapICM_Request" sessionKey="SapICM_Request" type="domdoc"/>
+				<forward name="success" path="ChangeLayout" />
+			</pipe>
+			
+			<pipe name ="ChangeLayout"
+				className="nl.nn.adapterframework.pipes.XsltPipe"
+				styleSheetName="xsl/ChangeLayout.xsl"> 
+				<forward name="success" path="Determine file type monthly or daily" />
+			</pipe>
+			
+			<pipe name ="Determine file type monthly or daily"
+				className="nl.nn.adapterframework.pipes.XmlSwitch"
+				serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
+				xslt2="true">
+				<param name="recordTypeForFile" sessionKey="recordTypeParam"/>
+                <forward name="monthly" path="Create P-view file for monthly"/>
+                <forward name="daily" path="Create P-view file for daily"/> 
+			</pipe>
+			
+			<pipe name="Create P-view file for monthly"
+		   		className="nl.nn.adapterframework.pipes.FilePipe"
+        		actions="write_append"
+        		writeLineSeparator="true"
+        		fileNameSessionKey="outputFileName"
+        		directory="${fxf.dir}/${OutputDirMonthly}/out">
+				<forward name="success" path="Update record as processed"/>
+			</pipe>
+			
+			<pipe name="Create P-view file for daily"
+		   		className="nl.nn.adapterframework.pipes.FilePipe"
+        		actions="write_append"
+        		writeLineSeparator="true"
+        		fileNameSessionKey="outputFileName"
+        		directory="${fxf.dir}/${OutputDirDaily}/out">
+				<forward name="success" path="Update record as processed"/>
+			</pipe>
+			
+			<pipe name="Update record as processed"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				
+				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					queryType="update" 
+					jmsRealm="jdbc"
+					query="UPDATE RECORDSTORE SET STATUS = 2, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
+					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
+				</sender>
+				<forward name="success" path="READY" />
+			</pipe>
+			
+			<pipe name="Update record for xsd invalid"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				
+				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					queryType="update" 
+					jmsRealm="jdbc"
+					query="UPDATE RECORDSTORE SET STATUS = 9, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
+					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
+				</sender>
+				<forward name="success" path="READY" />
+			</pipe>
+			
+			<pipe name="Update record for ERROR response"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				
+				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					queryType="update" 
+					jmsRealm="jdbc"
+					query="UPDATE RECORDSTORE SET STATUS = 4, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
+					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
+				</sender>
+				<forward name="success" path="READY" />
+			</pipe>
+			
+			<pipe name="Update record for ERROR timeout"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				
+				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					queryType="update" 
+					jmsRealm="jdbc"
+					query="UPDATE RECORDSTORE SET STATUS = 5, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
+					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
+				</sender>
+				<forward name="success" path="READY" />
+			</pipe>
+			
+			<pipe name="force To Exception"
+				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				
+				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
+					queryType="update" 
+					jmsRealm="jdbc"
+					query="UPDATE RECORDSTORE SET STATUS = 99, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
+					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
+				</sender>
+				<forward name="success" path="catch exception" />
+			</pipe>
+
+			<pipe name="catch exception" 
+				className="nl.nn.adapterframework.pipes.ExceptionPipe"
+				throwException="false">
+				<forward name="success" path="EXIT" />
+			</pipe>
+
+		</pipeline>
+	</adapter>
+	
+</module>

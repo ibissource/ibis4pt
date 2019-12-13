@@ -1,0 +1,33 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Header>
+    <MessageHeader xmlns="http://nn.nl/XSD/Generic/MessageHeader/2">
+      <From>
+        <Id>Ibis4PT</Id>
+      </From>
+      <To>
+        <Location>ESB.CustomerAdministration.BS.Party.1.GetPartiesOnAgreement.6.Request</Location>
+      </To>
+      <HeaderFields>
+        <CPAId>n/a</CPAId>
+        <ConversationId>MYHOST000012345_0a1b234c--56de7fa8_9012345678b_-9cd0</ConversationId>
+        <MessageId>MYHOST000012345_0a1b234c--56de7fa8_9012345678b_-9cd0</MessageId>
+        <Timestamp>2001-12-17T09:30:47</Timestamp>
+      </HeaderFields>
+      <Service>
+        <Name>Party</Name>
+        <Context/>
+        <Action>
+          <Paradigm>Request</Paradigm>
+          <Name>GetPartiesOnAgreement</Name>
+          <Version>6</Version>
+        </Action>
+      </Service>
+    </MessageHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <GetPartiesOnAgreement_Request xmlns="http://nn.nl/XSD/CustomerAdministration/Party/1/GetPartiesOnAgreement/6">
+      <PolicyNumber>1234567</PolicyNumber>
+      <VTAID>SOLI</VTAID>
+    </GetPartiesOnAgreement_Request>
+  </soapenv:Body>
+</soapenv:Envelope>

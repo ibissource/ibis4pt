@@ -1,0 +1,66 @@
+<databaseChangeLog
+	xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+		http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.1.xsd">
+
+<!-- When using one of the following commands, a rollback script is not required
+AddColumn
+AddDefaultValue
+AddForeignKeyConstraint
+AddLookupTable
+AddNotNullConstraint
+AddPrimaryKey
+AddUniqueConstraint
+CreateIndex
+CreateSequence
+CreateTable
+CreateView
+DropNotNullConstraint
+RenameColumn
+RenameTable
+RenameView
+TagDatabase
+ -->
+
+	<changeSet id="Ibis4Pt:1" author="Gerrit van Brakel">
+		<createTable tableName="RECORDSTORE">
+			<column name="RECORDID" type="BIGINT"><constraints nullable="false"/></column>
+			<column name="TYPE" type="java.sql.Types.CHAR(10)"/>
+			<column name="CRE_TYDST" type="java.sql.Types.Date"/>
+			<column name="PRC_TYDST" type="java.sql.Types.Date"/>
+			<column name="INPUTFILEREF" type="java.sql.Types.VARCHAR(40)"/>
+			<column name="OUTPUTFILEREF" type="java.sql.Types.VARCHAR(40)"/>
+			<column name="REQUEST" type="CLOB"/>
+			<column name="RECORDTYPE" type="java.sql.Types.VARCHAR(50)"/>
+			<column name="POLICYNO" type="java.sql.Types.VARCHAR(50)"/>
+			<column name="STATUS" type="NUMBER(2)"/>
+			<column name="RETRY" type="NUMBER (1)"/>
+			<column name="FILE_PRC_TYDST" type="java.sql.Types.Date"/>
+		</createTable>
+		
+		<createIndex tableName="RECORDSTORE" indexName="PK_RECORDSTORE" unique="true">
+			<column name="RECORDID"/>
+		</createIndex>
+
+		<createIndex tableName="RECORDSTORE" indexName="RECORDSTORE01_IDX" unique="true">
+			<column name="INPUTFILEREF"/>
+		</createIndex>
+
+		<createIndex tableName="RECORDSTORE" indexName="RECORDSTORE_IDX" unique="true">
+			<column name="TYPE"/>
+		</createIndex>
+
+		<createIndex tableName="RECORDSTORE" indexName="RECORDSTORE02_IDX" unique="true">
+			<column name="PRC_TYDST"/>
+			<column name="TYPE"/>
+			<column name="RECORDID"/>
+		</createIndex>
+		
+		<addPrimaryKey tableName="RECORDSTORE" columnNames="RECORDID"/>
+		
+		<createSequence sequenceName="SEQ_RECORDSTOREc" startValue="161332"/>
+		
+	</changeSet>
+
+</databaseChangeLog>
