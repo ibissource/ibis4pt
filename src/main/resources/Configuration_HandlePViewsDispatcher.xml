@@ -3,20 +3,32 @@
 	<adapter name="HandlePviewsDispatcher" description="HandlePviewsDispatcher">
 
 		<receiver name="HandlePviewsDispatcher"
-				className="nl.nn.adapterframework.receivers.GenericReceiver"
 				transactionAttribute="Required"
 				transactionTimeout="${FXF_TransactionTimeout}"
 				maxRetries="${FXF_maxRetries}">
-			<listener className="nl.nn.adapterframework.extensions.esb.EsbJmsListener"
+			<JavaListener/>
+			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				datasourceName="${jdbc.default.datasource}" 
+				slotId="${FXF_Application}/HandlePviewsDispatcher" />
+			<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
+				datasourceName="${jdbc.default.datasource}" 
+				slotId="${FXF_Application}/HandlePviewsDispatcher/Archive" />
+		</receiver>
+
+		<receiver name="HandlePviewsDispatcher" active="${active.jms}"
+				transactionAttribute="Required"
+				transactionTimeout="${FXF_TransactionTimeout}"
+				maxRetries="${FXF_maxRetries}">
+			<listener className="nl.nn.adapterframework.jms.JmsListener"
 				destinationName="P2P.General.LC_PDDS.FileTransfer.Action" 
 				lookupDestination="false"
                	jmsRealm="qcf_tibco_p2p_ff"
 				messageProtocol="FF" />
 			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-				jmsRealm="jdbc" 
+				datasourceName="${jdbc.default.datasource}" 
 				slotId="${FXF_Application}/HandlePviewsDispatcher" />
 			<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-				jmsRealm="jdbc" 
+				datasourceName="${jdbc.default.datasource}" 
 				slotId="${FXF_Application}/HandlePviewsDispatcher/Archive" />
 		</receiver>
 
@@ -43,7 +55,7 @@
 				name="Read input CSV file"
 				className="nl.nn.adapterframework.pipes.FilePipe"
 				actions="read"
-				outputType="stream">				  			  			
+				outputType="stream">
 				<forward name="success" path="Process each Line" />
 			</pipe>
 			
@@ -64,11 +76,11 @@
 	
 	<adapter name="HandlePviewsStore" description="Opens batchfile and maps the records into Database">
 		<receiver name="HandlePviewsStore"
-			className="nl.nn.adapterframework.receivers.GenericReceiver">
+			>
 			<listener name="HandlePviewsStore"
 				className="nl.nn.adapterframework.receivers.JavaListener" />
 			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-				jmsRealm="jdbc" 
+				datasourceName="${jdbc.default.datasource}" 
 				slotId="${ApplicationId}/HandlePviewsStore" />
 		</receiver>
 		
@@ -85,7 +97,7 @@
 				className="nl.nn.adapterframework.pipes.XmlSwitch"
 				serviceSelectionStylesheetFilename="xsl/CheckEmptyLine.xsl"
 				getInputFromFixedValue="&lt;Dummy/&gt;"
-				xslt2="true">
+				>
 				<param name="FileLine" sessionKey="originalMessage" />
 				<forward name="READY" path="READY" />
 				<forward name="process" path="extract file name" />
@@ -96,7 +108,7 @@
 				styleSheetName="xsl/ClientFilename.xsl"
 				getInputFromFixedValue="&lt;Dummy/&gt;"
 			    storeResultInSessionKey="FileName"
-				xslt2="true">
+				>
 			    <param name="clientFilename" sessionKey="filePathName"/>
 			    
 				<forward name="success" path="process line"/>
@@ -107,7 +119,7 @@
 				styleSheetName="xsl/ProcessLine.xsl"
 				getInputFromFixedValue="&lt;Dummy/&gt;"
 			    storeResultInSessionKey="PolNr"
-				xslt2="true">
+				>
 			    <param name="mode" value="PolNr"/>
 			    <param name="originalMessage" sessionKey="originalMessage"/>
 			    
@@ -115,13 +127,13 @@
 			</pipe>
 			
 			<pipe name="Insert into database"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				<sender 
 					className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					query="INSERT INTO RECORDSTORE (RECORDID, TYPE, RECORDTYPE, CRE_TYDST, INPUTFILEREF, POLICYNO, REQUEST, STATUS) 
 							VALUES(SEQ_RECORDSTORE.NEXTVAL,'VTA-049','renewal',SYSTIMESTAMP,?,?,?,0)"
 					queryType="insert"
-					jmsRealm="jdbc">
+					datasourceName="${jdbc.default.datasource}">
 					
 					<!-- <param name="flowId" sessionKey="flowId" /> -->
 					<param name="InputFileRef" sessionKey="FileName"/>

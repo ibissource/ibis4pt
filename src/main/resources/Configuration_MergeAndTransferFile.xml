@@ -4,19 +4,19 @@
 			description="This adapter itertes over files created by different nodes and triggers child adapter to create final merged file.">
 	
 		<receiver name="MergeAndTransferFile JdbcQueryListener"
-                  className="nl.nn.adapterframework.receivers.GenericReceiver"
+                  
                   transactionAttribute="Required"
                   pollInterval="60"
                   active="true"
                   transactionTimeout="14400">
             <listener name="JdbcQueryListener for MergeAndTransferFile"
                    className="nl.nn.adapterframework.jdbc.JdbcQueryListener"
-                   jmsRealm="jdbc"
+                   datasourceName="${jdbc.default.datasource}"
                    selectQuery="SELECT RECORDID AS KEY FROM RECORDSTORE WHERE PRC_TYDST IS NOT NULL AND FILE_PRC_TYDST IS NULL AND ROWNUM=1 AND STATUS='2'" 
                    updateStatusToProcessedQuery="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP WHERE RECORDID=?"
                    keyField="key"/>
-            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}"/>
-            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}" />                       
+            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" datasourceName="${jdbc.default.datasource}" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}"/>
+            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" datasourceName="${jdbc.default.datasource}" slotId="${ApplicationId}/MergeAndTransferFile" retention="${retentionPeriod}" />                       
         </receiver>
 		
 		<pipeline firstPipe="Get count of unprocessed records" transactionAttribute="Required">
@@ -27,11 +27,11 @@
 				</exits>
 				
 				<pipe name="Get count of unprocessed records"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					className="nl.nn.adapterframework.pipes.SenderPipe"
 					transactionAttribute="RequiresNew">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="select" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="SELECT COUNT(1) AS COUNT FROM RECORDSTORE WHERE STATUS='0'">
 					</sender>
 					<forward name="success" path="Check if Orchestration is complete" />
@@ -49,7 +49,7 @@
 					styleSheetName="xsl/OutputFilename.xsl"
 					getInputFromFixedValue="&lt;Dummy/&gt;"
 					storeResultInSessionKey="outputFileName_monthly"
-					xslt2="true">
+					>
 					<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
 					<param name="Type" value="renewal" />
 					<param name="fileType" value="final" />
@@ -62,7 +62,7 @@
 					styleSheetName="xsl/OutputFilename.xsl"
 					getInputFromFixedValue="&lt;Dummy/&gt;"
 					storeResultInSessionKey="outputFileName_daily"
-					xslt2="true">
+					>
 					<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
 					<param name="Type" value="mutation" />
 					<param name="fileType" value="final" />
@@ -71,11 +71,11 @@
 				</pipe>	
 				
 				<pipe name="Update file processed date for selected record"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					className="nl.nn.adapterframework.pipes.SenderPipe"
 					storeResultInSessionKey="selectedRecordType">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="select" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="SELECT RECORDTYPE FROM RECORDSTORE WHERE RECORDID = ?">
 						<param name="RECORDID" sessionKey="originalMessage"/>
 					</sender>
@@ -86,17 +86,17 @@
 					className="nl.nn.adapterframework.pipes.XmlSwitch"
 					serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
 					getInputFromFixedValue="&lt;Dummy/&gt;"
-					xslt2="true">
+					>
 					<param name="recordTypeForFile" xpathExpression="(//row/field[@name='RECORDTYPE'])" sessionKey="selectedRecordType"/>
 	                <forward name="monthly" path="Update record with monthly file name"/>
 	                <forward name="daily" path="Update record with daily file name"/> 
 				</pipe>
 				
 				<pipe name="Update record with monthly file name"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					className="nl.nn.adapterframework.pipes.SenderPipe">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="update" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE RECORDID = ?">
 						<param name="OUTPUTFILEREF" sessionKey="outputFileName_monthly"/>
 						<param name="RECORDID" sessionKey="originalMessage"/>
@@ -105,10 +105,10 @@
 				</pipe>
 				
 				<pipe name="Update record with daily file name"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					className="nl.nn.adapterframework.pipes.SenderPipe">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="update" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE RECORDID = ?">
 						<param name="OUTPUTFILEREF" sessionKey="outputFileName_daily"/>
 						<param name="RECORDID" sessionKey="originalMessage"/>
@@ -121,7 +121,7 @@
 					className="nl.nn.adapterframework.pipes.FilePipe"
 					actions="list"
 					directory="${fxf.dir}/${OutputDirMonthly}/out"
-					fileName="Monthly*"
+					filename="Monthly*"
 					storeResultInSessionKey="monthlyFilesInfo"> 			  			
 					<forward name="success" path="Check if monthly files exist" />
 				</pipe>
@@ -149,11 +149,11 @@
 				</pipe>
 				
 				<pipe name="Update file processed date for monthly records"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					className="nl.nn.adapterframework.pipes.SenderPipe"
 					transactionAttribute="RequiresNew">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="update" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE STATUS='2' AND RECORDTYPE='renewal' AND RECORDID != ?">
 						<param name="OUTPUTFILEREF" sessionKey="outputFileName_monthly"/>
 						<param name="RECORDID" sessionKey="originalMessage"/>
@@ -165,7 +165,7 @@
 					className="nl.nn.adapterframework.pipes.XsltPipe"
 					styleSheetName="xsl/CompleteFilePath.xsl"
 					storeResultInSessionKey="completeFilePath"
-					xslt2="true">
+					>
 					<param name="outputFileName" sessionKey="outputFileName_monthly"/>
 					<param name="fxfDir" value="${fxf.dir}" />
 					<param name="outputDir" value="${OutputDirMonthly}" />
@@ -174,7 +174,7 @@
 				</pipe>
 				
 				<pipe name="Start FXF transfer Monthly"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					className="nl.nn.adapterframework.pipes.SenderPipe">
 					<inputWrapper className="nl.nn.adapterframework.extensions.fxf.FxfWrapperPipe"
 						flowId="${OutputDirMonthly}" />
 					<inputValidator
@@ -186,7 +186,7 @@
 	               		jmsRealm="qcf_tibco_esb_ff"
 						messageProtocol="FF" />
 					<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-						jmsRealm="jdbc" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
+						datasourceName="${jdbc.default.datasource}" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
 					<forward name="success" path="Get info about daily files" />
 				</pipe>
 				
@@ -195,7 +195,7 @@
 					className="nl.nn.adapterframework.pipes.FilePipe"
 					actions="list"
 					directory="${fxf.dir}/${OutputDirDaily}/out"
-					fileName="Daily*"
+					filename="Daily*"
 					storeResultInSessionKey="dailyFilesInfo"> 			  			
 					<forward name="success" path="Check if daily files exist" />
 				</pipe>
@@ -223,11 +223,11 @@
 				</pipe>
 				
 				<pipe name="Update file processed date for daily records"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+					className="nl.nn.adapterframework.pipes.SenderPipe"
 					transactionAttribute="RequiresNew">
 					<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 						queryType="update" 
-						jmsRealm="jdbc"
+						datasourceName="${jdbc.default.datasource}"
 						query="UPDATE RECORDSTORE SET FILE_PRC_TYDST = SYSTIMESTAMP, OUTPUTFILEREF=? WHERE STATUS='2' AND RECORDTYPE ='mutation' AND RECORDID != ?">
 						<param name="OUTPUTFILEREF" sessionKey="outputFileName_daily"/>
 						<param name="RECORDID" sessionKey="originalMessage"/>
@@ -239,7 +239,7 @@
 					className="nl.nn.adapterframework.pipes.XsltPipe"
 					styleSheetName="xsl/CompleteFilePath.xsl"
 					storeResultInSessionKey="completeFilePath"
-					xslt2="true">
+					>
 					<param name="outputFileName" sessionKey="outputFileName_daily"/>
 					<param name="fxfDir" value="${fxf.dir}" />
 					<param name="outputDir" value="${OutputDirDaily}" />
@@ -248,7 +248,7 @@
 				</pipe>
 		     
 			    <pipe name="Start FXF transfer Daily"
-					className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					className="nl.nn.adapterframework.pipes.SenderPipe">
 					<inputWrapper className="nl.nn.adapterframework.extensions.fxf.FxfWrapperPipe"
 						flowId="${OutputDirDaily}" />
 					<inputValidator
@@ -260,7 +260,7 @@
 	               		jmsRealm="qcf_tibco_esb_ff"
 						messageProtocol="FF" />
 					<messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-						jmsRealm="jdbc" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
+						datasourceName="${jdbc.default.datasource}" retention="${retentionPeriod}" slotId="${applicationId}/HandlePViews" />
 					<forward name="success" path="READY" />
 				</pipe>
 				
@@ -272,7 +272,7 @@
             description="This adapter creates final file.">
             
             <receiver name="MergeAndTransferFile_Child"
-                className="nl.nn.adapterframework.receivers.GenericReceiver">
+                >
 			      <listener name="MergeAndTransferFile_Child"
                    className="nl.nn.adapterframework.receivers.JavaListener"/>
 		    </receiver>
@@ -287,7 +287,7 @@
 					className="nl.nn.adapterframework.pipes.XsltPipe"
 					styleSheetName="xsl/CompleteFilePath.xsl"
 					storeResultInSessionKey="intFilePathName"
-					xslt2="true">
+					>
 					<param name="outputFileName" xpathExpression="normalize-space(file/@name)"/>
 					<param name="fxfDir" value="${fxf.dir}" />
 					<param name="outputDir" sessionKey="outputDirParam" />
@@ -308,7 +308,7 @@
 					className="nl.nn.adapterframework.pipes.XmlSwitch"
 					serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
 					getInputFromFixedValue="&lt;Dummy/&gt;"
-				xslt2="true">
+				>
 					<param name="recordTypeForFile" sessionKey="recordTypeParam"/>
 	                <forward name="monthly" path="Write to final monthly file"/>
 	                <forward name="daily" path="Write to final daily file"/> 
@@ -319,7 +319,7 @@
 					className="nl.nn.adapterframework.pipes.FilePipe"
 					actions="write_append"
 					directory="${fxf.dir}/${OutputDirMonthly}/out"
-					fileNameSessionKey="outputFileNameParam"
+					filenameSessionKey="outputFileNameParam"
 					getInputFromSessionKey="intFileStream"> 			  			
 					<forward name="success" path="Delete the intermediate file" />
 				</pipe>
@@ -329,7 +329,7 @@
 					className="nl.nn.adapterframework.pipes.FilePipe"
 					actions="write_append"
 					directory="${fxf.dir}/${OutputDirDaily}/out"
-					fileNameSessionKey="outputFileNameParam"
+					filenameSessionKey="outputFileNameParam"
 					getInputFromSessionKey="intFileStream"> 			  			
 					<forward name="success" path="Delete the intermediate file" />
 				</pipe>
@@ -338,7 +338,7 @@
 					name="Delete the intermediate file"
 					className="nl.nn.adapterframework.pipes.FilePipe"
 					actions="delete"
-					fileNameSessionKey="intFilePathName"> 			  			
+					filenameSessionKey="intFilePathName"> 			  			
 					<forward name="success" path="EXIT" />
 				</pipe>
 				
