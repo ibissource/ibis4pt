@@ -1,143 +1,78 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-  <modelVersion>4.0.0</modelVersion>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
 
-  <parent>
-    <groupId>org.ibissource</groupId>
-    <artifactId>ibis-adapterframework-parent</artifactId>
-    <version>7.8-20220217.093539</version>
-  </parent>
+	<parent>
+		<groupId>org.ibissource</groupId>
+		<artifactId>ibis-adapterframework-parent</artifactId>
+		<version>7.8-20220315.180221</version>
+	</parent>
 
-  <artifactId>ibis4pt</artifactId>
-  <name>Ibis for Performance Tests</name>
-  <packaging>war</packaging>
+	<artifactId>ibis4pt</artifactId>
+	<name>Ibis for Performance Tests</name>
+	<packaging>war</packaging>
 
-  <properties>
-    <m2eclipse.wtp.contextRoot>ibis4pt</m2eclipse.wtp.contextRoot>
-    <failOnMissingWebXml>false</failOnMissingWebXml>
-  </properties>
+	<properties>
+		<m2eclipse.wtp.contextRoot>ibis4pt</m2eclipse.wtp.contextRoot>
+		<failOnMissingWebXml>false</failOnMissingWebXml>
+	</properties>
 
-  <dependencies>
-<!--     <dependency> -->
-<!--       <groupId>org.ibissource</groupId> -->
-<!--       <artifactId>ibis-adapterframework-core</artifactId> -->
-<!--     </dependency> -->
-    <dependency>
-      <groupId>javax.servlet</groupId>
-        <artifactId>javax.servlet-api</artifactId>
-        <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.ibissource</groupId>
-      <artifactId>ibis-adapterframework-webapp</artifactId>
-      <type>war</type>
-    </dependency>
-    <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-      <version>1.4.199</version>
-    </dependency>
-    <dependency>
-      <groupId>org.hsqldb</groupId>
-      <artifactId>hsqldb</artifactId>
-      <version>2.3.0</version>
-    </dependency>
-    <dependency>
-      <groupId>commons-dbcp</groupId>
-      <artifactId>commons-dbcp</artifactId>
-      <version>1.4</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jms_1.1_spec</artifactId>
-      <scope>runtime</scope><!-- Overwrite <scope>provided</scope> in parent pom. -->
-    </dependency>
-	<!-- Test scoped dependencies -->
-<!-- 	<dependency> -->
-<!-- 		<groupId>junit</groupId> -->
-<!-- 		<artifactId>junit</artifactId> -->
-<!-- 		<version>4.8.2</version> -->
-<!-- 		<scope>test</scope> -->
-<!-- 	</dependency> -->
-<!--     <dependency> -->
-<!--       <groupId>org.ibissource</groupId> -->
-<!--       <artifactId>ibis-adapterframework-ladybug</artifactId> -->
-<!--       <scope>test</scope> -->
-<!--     </dependency> -->
-  </dependencies>
+	<dependencies>
+		<dependency>
+			<groupId>javax.servlet</groupId>
+			<artifactId>javax.servlet-api</artifactId>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.ibissource</groupId>
+			<artifactId>ibis-adapterframework-webapp</artifactId>
+			<type>war</type>
+		</dependency>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<version>1.4.199</version>
+		</dependency>
+		<dependency>
+			<groupId>org.hsqldb</groupId>
+			<artifactId>hsqldb</artifactId>
+			<version>2.3.0</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-dbcp</groupId>
+			<artifactId>commons-dbcp</artifactId>
+			<version>1.4</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.geronimo.specs</groupId>
+			<artifactId>geronimo-jms_1.1_spec</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+	</dependencies>
 
-  <profiles>
-    <!--
-    Copy dependencies from iaf-webapp/pom.xml to make m2e add dependent-module
-    elements to org.eclipse.wst.common.component. Maven doesn't need this copy
-    to add the jar files to the war file. Might be a bug in m2e:
-    https://bugs.eclipse.org/bugs/show_bug.cgi?id=398138
-    Note: Maven will copy the jar files from the war in the local repository
-    which might be an old snapshot.
-    -->
-    <profile>
-      <id>m2e</id>
-      <activation>
-        <property>
-          <name>m2e.version</name>
-        </property>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-larva</artifactId>
-          <scope>runtime</scope>
-        </dependency>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-akamai</artifactId>
-        </dependency>
-      </dependencies>
-    </profile>
-    <profile>
-      <id>proprietary</id>
-      <activation>
-        <property>
-          <name>proprietary</name>
-        </property>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-ifsa</artifactId>
-        </dependency>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-tibco</artifactId>
-        </dependency>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-sap</artifactId>
-        </dependency>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-coolgen</artifactId>
-        </dependency>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-ibm</artifactId>
-        </dependency>
-      </dependencies>
-    </profile>
-    <profile>
-      <id>cmis</id>
-      <activation>
-        <property>
-          <name>!cmis</name>
-        </property>
-      </activation>
-      <dependencies>
-        <dependency>
-          <groupId>org.ibissource</groupId>
-          <artifactId>ibis-adapterframework-cmis</artifactId>
-          <scope>runtime</scope>
-        </dependency>
-      </dependencies>
-    </profile>
-  </profiles>
-
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.commonjava.maven.plugins</groupId>
+				<artifactId>directory-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>find-project-root-directory</id>
+						<phase>none</phase>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.glassfish.copyright</groupId>
+				<artifactId>glassfish-copyright-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>Check-CopyRight-Notice</id>
+						<phase>none</phase>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>

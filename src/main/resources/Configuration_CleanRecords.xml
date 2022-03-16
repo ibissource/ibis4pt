@@ -5,7 +5,7 @@
 	
 		<receiver
 				name="CleanRecords"
-				className="nl.nn.adapterframework.receivers.GenericReceiver">
+				>
 				<listener
 					name="CleanRecords"
 					className="nl.nn.adapterframework.receivers.JavaListener"
@@ -19,9 +19,9 @@
 				</exits>
 				
 				<pipe name="Delete records from database"
-					  className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+					  className="nl.nn.adapterframework.pipes.SenderPipe">
 						<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
-							    jmsRealm="jdbc" 
+							    datasourceName="${jdbc.default.datasource}" 
 							    query="DELETE FROM RECORDSTORE WHERE SYSTIMESTAMP - ? > PRC_TYDST">
 						</sender>
 						<param name="time" value="${noOfDaysToCleanDatabase}"/>
@@ -34,10 +34,9 @@
 		
 	<scheduler>
 		<job name="CleanRecords"
-		 	 adapterName="CleanRecords"
+		 	 javaListener="CleanRecords"
 		 	 description="The adapter must start at 20:00 every day"
 		 	 cronExpression="${CleanRecords.cron}"		  
-		 	 receiverName="CleanRecords"
 		 	 function="sendMessage" /> 
 	</scheduler>
 	

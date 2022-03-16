@@ -1,7 +1,7 @@
 <module>
 	<adapter name="TestXSLTPipe" description="To test xslt pipe">
     	
-      	<receiver name="TestXSLTPipe" className="nl.nn.adapterframework.receivers.GenericReceiver">
+      	<receiver name="TestXSLTPipe" >
 			<listener name="TestXSLTPipe" className="nl.nn.adapterframework.receivers.JavaListener" serviceName="TestXSLTPipe" />
 		</receiver>
       	

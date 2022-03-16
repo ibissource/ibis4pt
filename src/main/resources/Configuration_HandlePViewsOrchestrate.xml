@@ -2,7 +2,7 @@
 	<adapter name="HandlePViewsOrchestrate" description="Process each P-views record stored in DB:Recordstore">
     	
       	<receiver name="HandlePViewsOrchestrate JdbcQueryListener"
-                  className="nl.nn.adapterframework.receivers.GenericReceiver"
+                  
                   numThreads="${maxThreads}"
                   transactionAttribute="Required"
                   pollInterval="60"
@@ -10,12 +10,12 @@
                   transactionTimeout="14400">
             <listener name="JdbcQueryListener for HandlePViewsOrchestrate"
                    className="nl.nn.adapterframework.jdbc.JdbcQueryListener"
-                   jmsRealm="jdbc"
+                   datasourceName="${jdbc.default.datasource}"
                    selectQuery="SELECT RECORDID AS KEY FROM RECORDSTORE WHERE STATUS=0 AND RECORDTYPE = 'renewal' AND PRC_TYDST IS NULL" 
 				   updateStatusToProcessedQuery="UPDATE RECORDSTORE SET STATUS = STATUS WHERE RECORDID=?"  
                    keyField="key"/>
-            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}"/>
-            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}" />                       
+            <errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" datasourceName="${jdbc.default.datasource}" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}"/>
+            <messageLog className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage" datasourceName="${jdbc.default.datasource}" slotId="${ApplicationId}/HandlePViewsOrchestrate" retention="${retentionPeriod}" />                       
         </receiver>
       	
  <!-- updateStatusToErrorQuery="UPDATE RECORDSTORE SET STATUS = 9 WHERE RECORDID=?" 
@@ -32,13 +32,13 @@
 			</exits>
 			
 			<pipe name="Retrieve record from database"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				className="nl.nn.adapterframework.pipes.SenderPipe"
 				storeResultInSessionKey="originalMessage">
 				<sender 
 					className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					query="SELECT RECORDID,POLICYNO,RECORDTYPE,REQUEST FROM RECORDSTORE WHERE RECORDID=?"
 					queryType="select"
-					jmsRealm="jdbc">
+					datasourceName="${jdbc.default.datasource}">
 					<param name="RECORDID" sessionKey="originalMessage"/>
 				</sender>
 				<forward name="success" path="Extract record information from result"/>
@@ -47,7 +47,7 @@
 			<pipe name="Extract record information from result" className="nl.nn.adapterframework.pipes.XsltPipe"
 				styleSheetName="xsl/ExtractRecord.xsl"
 				storeResultInSessionKey="extractedRecord"
-				xslt2="true">
+				>
 				<param name="record" sessionKey="originalMessage" type="domdoc" />
 				<forward name="success" path="Determine intermediate filename" />
 			</pipe>
@@ -57,7 +57,7 @@
 				styleSheetName="xsl/OutputFilename.xsl"
 				getInputFromFixedValue="&lt;Dummy/&gt;"
 				storeResultInSessionKey="outputFileName"
-				xslt2="true">
+				>
 				<param name="timestamp" pattern="{now,date,yyyyMMddHHmmss}" />
 				<param name="Type" xpathExpression="//row/field[@name='RECORDTYPE']" sessionKey="extractedRecord" />
 				<param name="fileType" value="temp" />
@@ -66,7 +66,7 @@
 			</pipe>
 			
 			<pipe name="Process extracted record"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				className="nl.nn.adapterframework.pipes.SenderPipe"
 				getInputFromSessionKey="extractedRecord">
 				<sender className="nl.nn.adapterframework.senders.IbisLocalSender"
 					javaListener="HandlePViewsGetData">
@@ -81,11 +81,11 @@
 
 	<adapter name="HandlePViewsGetData">
 		<receiver name="HandlePViewsGetData"
-			className="nl.nn.adapterframework.receivers.GenericReceiver">
+			>
 			<listener name="HandlePViewsGetData"
 				className="nl.nn.adapterframework.receivers.JavaListener" />
 			<errorStorage className="nl.nn.adapterframework.jdbc.JdbcTransactionalStorage"
-				jmsRealm="jdbc" slotId="${ApplicationId}/HandlePViewsGetData" />
+				datasourceName="${jdbc.default.datasource}" slotId="${ApplicationId}/HandlePViewsGetData" />
 		</receiver>
 
 		<pipeline firstPipe="Create SapICM request" transactionAttribute="Required">
@@ -103,7 +103,7 @@
 				className="nl.nn.adapterframework.pipes.XsltPipe"
 				styleSheetName="xsl/SapICM_Request.xsl"
 				storeResultInSessionKey="SapICM_Request"
-				xslt2="true">
+				>
 				<param name="str" xpathExpression="row/field[@name='REQUEST']" sessionKey="originalMessage" />
 				<forward name="success" path="Create GetPartiesOnAgreement request" />
 			</pipe>
@@ -111,14 +111,14 @@
 			<pipe name="Create GetPartiesOnAgreement request" 
 				className="nl.nn.adapterframework.pipes.XsltPipe"
 				styleSheetName="xsl/GetPartiesOnAgreement_Request.xsl"
-				xslt2="true">
+				>
 				<param name="timestamp" pattern="{now,date,yyyy-MM-dd}" />
 				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
 				<forward name="success" path="Call GetPartiesOnAgreement" />
 			</pipe>
 
 			<pipe name="Call GetPartiesOnAgreement"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				className="nl.nn.adapterframework.pipes.SenderPipe"
 				storeResultInSessionKey="GPOA_Response" 
 				transactionAttribute="NotSupported">
 				<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
@@ -168,13 +168,13 @@
 			<pipe name="Create GetPolicyDetailsLifeInsurance request"
 				className="nl.nn.adapterframework.pipes.XsltPipe" 
 				styleSheetName="xsl/GPDLI_Request.xsl"
-				xslt2="true">
+				>
 				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
 				<forward name="success" path="Call GetPolicyDetailsLifeInsurance" />
 			</pipe>
 			
 			<pipe name="Call GetPolicyDetailsLifeInsurance"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe"
+				className="nl.nn.adapterframework.pipes.SenderPipe"
 				storeResultInSessionKey="GPDLI_Response" 
 				transactionAttribute="NotSupported">
 				<sender className="nl.nn.adapterframework.extensions.esb.EsbJmsSender"
@@ -224,7 +224,7 @@
 			<pipe name="Create P-view file content"
 				className="nl.nn.adapterframework.pipes.XsltPipe" 
 				styleSheetName="xsl/HandlePViewsLI.xsl"
-				xslt2="true">
+				>
 				<param name="PolNum" xpathExpression="row/field[@name='POLICYNO']" sessionKey="originalMessage" />
 				<param name="timestamp" pattern="{now,date,yyyyMMddHHmmssSSSSSS}" />
 				<param name="GPDLI_Response" sessionKey="GPDLI_Response" type="domdoc"/>
@@ -242,7 +242,7 @@
 			<pipe name ="Determine file type monthly or daily"
 				className="nl.nn.adapterframework.pipes.XmlSwitch"
 				serviceSelectionStylesheetFilename="xsl/RecordType.xsl"
-				xslt2="true">
+				>
 				<param name="recordTypeForFile" sessionKey="recordTypeParam"/>
                 <forward name="monthly" path="Create P-view file for monthly"/>
                 <forward name="daily" path="Create P-view file for daily"/> 
@@ -252,7 +252,7 @@
 		   		className="nl.nn.adapterframework.pipes.FilePipe"
         		actions="write_append"
         		writeLineSeparator="true"
-        		fileNameSessionKey="outputFileName"
+        		filenameSessionKey="outputFileName"
         		directory="${fxf.dir}/${OutputDirMonthly}/out">
 				<forward name="success" path="Update record as processed"/>
 			</pipe>
@@ -261,17 +261,17 @@
 		   		className="nl.nn.adapterframework.pipes.FilePipe"
         		actions="write_append"
         		writeLineSeparator="true"
-        		fileNameSessionKey="outputFileName"
+        		filenameSessionKey="outputFileName"
         		directory="${fxf.dir}/${OutputDirDaily}/out">
 				<forward name="success" path="Update record as processed"/>
 			</pipe>
 			
 			<pipe name="Update record as processed"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				
 				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					queryType="update" 
-					jmsRealm="jdbc"
+					datasourceName="${jdbc.default.datasource}"
 					query="UPDATE RECORDSTORE SET STATUS = 2, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
 					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
 				</sender>
@@ -279,11 +279,11 @@
 			</pipe>
 			
 			<pipe name="Update record for xsd invalid"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				
 				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					queryType="update" 
-					jmsRealm="jdbc"
+					datasourceName="${jdbc.default.datasource}"
 					query="UPDATE RECORDSTORE SET STATUS = 9, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
 					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
 				</sender>
@@ -291,11 +291,11 @@
 			</pipe>
 			
 			<pipe name="Update record for ERROR response"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				
 				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					queryType="update" 
-					jmsRealm="jdbc"
+					datasourceName="${jdbc.default.datasource}"
 					query="UPDATE RECORDSTORE SET STATUS = 4, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
 					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
 				</sender>
@@ -303,11 +303,11 @@
 			</pipe>
 			
 			<pipe name="Update record for ERROR timeout"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				
 				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					queryType="update" 
-					jmsRealm="jdbc"
+					datasourceName="${jdbc.default.datasource}"
 					query="UPDATE RECORDSTORE SET STATUS = 5, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
 					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
 				</sender>
@@ -315,11 +315,11 @@
 			</pipe>
 			
 			<pipe name="force To Exception"
-				className="nl.nn.adapterframework.pipes.GenericMessageSendingPipe">
+				className="nl.nn.adapterframework.pipes.SenderPipe">
 				
 				<sender className="nl.nn.adapterframework.jdbc.FixedQuerySender"
 					queryType="update" 
-					jmsRealm="jdbc"
+					datasourceName="${jdbc.default.datasource}"
 					query="UPDATE RECORDSTORE SET STATUS = 99, PRC_TYDST = SYSTIMESTAMP WHERE RECORDID = ?">
 					<param name="RECORDID" xpathExpression="row/field[@name='RECORDID']" sessionKey="originalMessage" />
 				</sender>
